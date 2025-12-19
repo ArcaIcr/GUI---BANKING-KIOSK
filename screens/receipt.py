@@ -1,6 +1,14 @@
 # screens/receipt.py
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton
+from PyQt5.QtWidgets import (
+    QWidget, QVBoxLayout, QLabel, QPushButton,
+    QSizePolicy, QApplication
+)
 from PyQt5.QtCore import Qt
+
+
+def scale(px: int) -> int:
+    screen_h = QApplication.primaryScreen().size().height()
+    return int(px * screen_h / 800)
 
 
 class ReceiptScreen(QWidget):
@@ -8,76 +16,110 @@ class ReceiptScreen(QWidget):
         super().__init__()
         self.next_callback = next_callback
 
-        layout = QVBoxLayout()
-        layout.setAlignment(Qt.AlignCenter)
+        # ---------- Layout ----------
+        self.root = QVBoxLayout(self)
+        self.root.setContentsMargins(40, 30, 40, 30)
+        self.root.setSpacing(scale(16))
 
-        title = QLabel("Transaction Complete 🧾")
-        title.setStyleSheet(
-            "font-size: 28px; font-weight: bold; color: #0d6efd; margin-bottom: 10px;"
+        self.root.addStretch(1)
+
+        # ---------- Title ----------
+        self.title = QLabel("Transaction Complete 🧾")
+        self.title.setAlignment(Qt.AlignCenter)
+        self.title.setStyleSheet(
+            f"""
+            font-size:{scale(28)}px;
+            font-weight:bold;
+            color:#0d6efd;
+            """
         )
-        layout.addWidget(title, alignment=Qt.AlignCenter)
+        self.root.addWidget(self.title)
 
-        # ---------------- Dynamic labels ----------------
+        # ---------- Dynamic Labels ----------
         self.type_label = QLabel("")
-        self.type_label.setStyleSheet("font-size: 20px; font-weight: bold; color: #333;")
-        layout.addWidget(self.type_label, alignment=Qt.AlignCenter)
+        self.type_label.setAlignment(Qt.AlignCenter)
+        self.type_label.setStyleSheet(
+            f"font-size:{scale(20)}px;font-weight:bold;color:#333;"
+        )
+        self.root.addWidget(self.type_label)
 
         self.amount_label = QLabel("")
-        self.amount_label.setStyleSheet("font-size: 18px; color: #555;")
-        layout.addWidget(self.amount_label, alignment=Qt.AlignCenter)
+        self.amount_label.setAlignment(Qt.AlignCenter)
+        self.amount_label.setStyleSheet(
+            f"font-size:{scale(18)}px;color:#555;"
+        )
+        self.root.addWidget(self.amount_label)
 
         self.recipient_label = QLabel("")
-        self.recipient_label.setStyleSheet("font-size: 18px; color: #555;")
-        layout.addWidget(self.recipient_label, alignment=Qt.AlignCenter)
+        self.recipient_label.setAlignment(Qt.AlignCenter)
+        self.recipient_label.setStyleSheet(
+            f"font-size:{scale(18)}px;color:#555;"
+        )
+        self.root.addWidget(self.recipient_label)
 
         self.balance_label = QLabel("")
-        self.balance_label.setStyleSheet("font-size: 18px; color: #555;")
-        layout.addWidget(self.balance_label, alignment=Qt.AlignCenter)
+        self.balance_label.setAlignment(Qt.AlignCenter)
+        self.balance_label.setStyleSheet(
+            f"font-size:{scale(18)}px;color:#555;"
+        )
+        self.root.addWidget(self.balance_label)
 
         self.time_label = QLabel("")
+        self.time_label.setAlignment(Qt.AlignCenter)
         self.time_label.setStyleSheet(
-            "font-size: 16px; color: #777; margin-top: 10px;"
+            f"font-size:{scale(16)}px;color:#777;"
         )
-        layout.addWidget(self.time_label, alignment=Qt.AlignCenter)
+        self.root.addWidget(self.time_label)
 
-        done_btn = QPushButton("Return to Home")
-        done_btn.setFixedSize(240, 60)
-        done_btn.clicked.connect(self.next_callback)
-        layout.addWidget(done_btn, alignment=Qt.AlignCenter)
+        self.root.addSpacing(scale(25))
 
-        self.setLayout(layout)
+        # ---------- Done Button ----------
+        self.done_btn = QPushButton("Return to Home")
+        self.done_btn.setMinimumHeight(scale(60))
+        self.done_btn.setSizePolicy(
+            QSizePolicy.Expanding,
+            QSizePolicy.Fixed
+        )
+        self.done_btn.setStyleSheet(
+            f"""
+            QPushButton {{
+                font-size:{scale(20)}px;
+                font-weight:bold;
+                padding:14px;
+                border-radius:{scale(20)}px;
+            }}
+            """
+        )
+        self.done_btn.clicked.connect(self.next_callback)
+        self.root.addWidget(self.done_btn)
+
+        self.root.addStretch(2)
+
+        self.reset()
+
+    # -------------------------------------------------
+    # RESET (important for reuse)
+    # -------------------------------------------------
+    def reset(self):
+        self.type_label.setText("")
+        self.amount_label.setText("")
+        self.recipient_label.setText("")
+        self.balance_label.setText("")
+        self.time_label.setText("")
+        self.recipient_label.hide()
+
+        self.updateGeometry()
+        self.repaint()
 
     # -------------------------------------------------
     # RECEIVE DATA FROM Transaction
     # -------------------------------------------------
     def set_receipt(self, data):
-        """
-        data examples:
-
-        Transfer:
-        {
-            "type": "Transfer Funds",
-            "recipient": "123456",
-            "amount": 500,
-            "old_balance": 1500,
-            "new_balance": 1000,
-            "timestamp": "2025-11-29 18:30:22"
-        }
-
-        Deposit:
-        {
-            "type": "Cash Deposit",
-            "amount": 5000,
-            "old_balance": 10000,
-            "new_balance": 15000,
-            "timestamp": "2025-11-29 18:45:10"
-        }
-        """
+        self.reset()
 
         self.type_label.setText(f"Transaction Type: {data['type']}")
         self.amount_label.setText(f"Amount: ₱{data['amount']:.2f}")
 
-        # Recipient shown ONLY if applicable
         recipient = data.get("recipient")
         if recipient:
             self.recipient_label.setText(f"Recipient: {recipient}")

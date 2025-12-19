@@ -210,7 +210,11 @@ class MainWindow(QWidget):
         self.auth = AuthScreen(self.go_menu, self.go_welcome)
         self.menu = MenuScreen(self.go_transaction, self.go_welcome)
 
-        self.transaction = TransactionScreen(self.go_receipt)
+        self.transaction = TransactionScreen(
+                self.go_receipt,
+                self.go_home      # ← cancel goes back to menu
+            )
+
         self.receipt = ReceiptScreen(self.go_home)
 
         self.account_info = AccountInfoScreen(self.go_home)
@@ -365,3 +369,4 @@ if __name__ == "__main__":
     window.show()
     QTimer.singleShot(100, window.showFullScreen)
     sys.exit(app.exec_())
+ 

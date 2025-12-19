@@ -1,6 +1,15 @@
 # screens/menu.py
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton
+from PyQt5.QtWidgets import (
+    QWidget, QVBoxLayout, QLabel, QPushButton,
+    QSizePolicy, QApplication
+)
 from PyQt5.QtCore import Qt
+
+
+def scale(px: int) -> int:
+    """Scale values relative to screen height (800px baseline)."""
+    screen_h = QApplication.primaryScreen().size().height()
+    return int(px * screen_h / 800)
 
 
 class MenuScreen(QWidget):
@@ -12,47 +21,88 @@ class MenuScreen(QWidget):
         self.balance = None
         self.next_callback = next_callback
 
-        layout = QVBoxLayout()
-        layout.setAlignment(Qt.AlignCenter)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(40, 30, 40, 30)
+        root.setSpacing(scale(18))
 
-        # ---------------- Title ----------------
+        root.addStretch(1)
+
+        # ---------- TITLE ----------
         title = QLabel("Select a Service")
+        title.setAlignment(Qt.AlignCenter)
         title.setStyleSheet(
-            "font-size: 28px; font-weight: bold; color: #0d6efd; margin-bottom: 10px;"
+            f"""
+            font-size: {scale(28)}px;
+            font-weight: bold;
+            color: #0d6efd;
+            """
         )
-        layout.addWidget(title, alignment=Qt.AlignCenter)
+        root.addWidget(title)
 
-        sub = QLabel("Choose from available kiosk banking options:")
-        sub.setStyleSheet(
-            "font-size: 16px; color: #555; margin-bottom: 30px;"
+        subtitle = QLabel("Choose from available kiosk banking options:")
+        subtitle.setAlignment(Qt.AlignCenter)
+        subtitle.setStyleSheet(
+            f"""
+            font-size: {scale(16)}px;
+            color: #555;
+            """
         )
-        layout.addWidget(sub, alignment=Qt.AlignCenter)
+        root.addWidget(subtitle)
 
-        # ---------------- Menu Buttons ----------------
-        self._add_btn(layout, "Transfer Funds", "transfer")
-        self._add_btn(layout, "Pay Bills", "bill")
-        self._add_btn(layout, "Cash Deposit", "deposit")
-        self._add_btn(layout, "Account Information", "info")
-        self._add_btn(layout, "Transaction History", "statement")
+        root.addSpacing(scale(20))
 
-        # ---------------- Logout ----------------
+        # ---------- MENU BUTTONS ----------
+        self._add_btn(root, "Transfer Funds", "transfer")
+        self._add_btn(root, "Pay Bills", "bill")
+        self._add_btn(root, "Cash Deposit", "deposit")
+        self._add_btn(root, "Account Information", "info")
+        self._add_btn(root, "Transaction History", "statement")
+
+        root.addSpacing(scale(25))
+
+        # ---------- LOGOUT ----------
         logout_btn = QPushButton("Logout")
-        logout_btn.setFixedSize(220, 55)
-        logout_btn.setStyleSheet("font-size:18px;")
+        logout_btn.setMinimumHeight(scale(55))
+        logout_btn.setSizePolicy(
+            QSizePolicy.Expanding,
+            QSizePolicy.Fixed
+        )
+        logout_btn.setStyleSheet(
+            f"""
+            QPushButton {{
+                font-size: {scale(18)}px;
+                padding: 12px;
+                border-radius: {scale(18)}px;
+            }}
+            """
+        )
         logout_btn.clicked.connect(back_callback)
-        layout.addWidget(logout_btn, alignment=Qt.AlignCenter)
+        root.addWidget(logout_btn)
 
-        self.setLayout(layout)
+        root.addStretch(2)
 
     # -------------------------------------------------
     # Button helper
     # -------------------------------------------------
     def _add_btn(self, layout, label, option):
         btn = QPushButton(label)
-        btn.setFixedSize(300, 60)
-        btn.setStyleSheet("font-size: 20px; font-weight: 500;")
+        btn.setMinimumHeight(scale(60))
+        btn.setSizePolicy(
+            QSizePolicy.Expanding,
+            QSizePolicy.Fixed
+        )
+        btn.setStyleSheet(
+            f"""
+            QPushButton {{
+                font-size: {scale(20)}px;
+                font-weight: 500;
+                padding: 14px;
+                border-radius: {scale(20)}px;
+            }}
+            """
+        )
         btn.clicked.connect(lambda _, opt=option: self.open_option(opt))
-        layout.addWidget(btn, alignment=Qt.AlignCenter)
+        layout.addWidget(btn)
 
     # -------------------------------------------------
     # Called after login

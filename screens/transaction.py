@@ -11,9 +11,10 @@ from database.db import get_conn, log_event
 
 
 class TransactionScreen(QWidget):
-    def __init__(self, next_callback):
+    def __init__(self, next_callback, cancel_callback):
         super().__init__()
         self.next_callback = next_callback
+        self.cancel_callback = cancel_callback
 
         # ---------- Layout ----------
         self.layout = QVBoxLayout()
@@ -34,10 +35,27 @@ class TransactionScreen(QWidget):
         self.amount_input.setFixedWidth(300)
         self.layout.addWidget(self.amount_input, alignment=Qt.AlignCenter)
 
+        # ---------- Action Buttons ----------
         self.confirm_btn = QPushButton("")
         self.confirm_btn.setFixedSize(260, 60)
         self.confirm_btn.clicked.connect(self.process)
         self.layout.addWidget(self.confirm_btn, alignment=Qt.AlignCenter)
+
+        self.cancel_btn = QPushButton("Cancel")
+        self.cancel_btn.setFixedSize(260, 50)
+        self.cancel_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #dee2e6;
+                color: #333;
+                border-radius: 14px;
+                font-size: 18px;
+            }
+            QPushButton:hover {
+                background-color: #ced4da;
+            }
+        """)
+        self.cancel_btn.clicked.connect(self.cancel)
+        self.layout.addWidget(self.cancel_btn, alignment=Qt.AlignCenter)
 
         self.setLayout(self.layout)
 
@@ -92,6 +110,21 @@ class TransactionScreen(QWidget):
             QMessageBox.warning(self, "Error", "Invalid transaction option.")
 
     # -------------------------------------------------
+    # Cancel → back to menu
+    # -------------------------------------------------
+    def cancel(self):
+        reply = QMessageBox.question(
+            self,
+            "Cancel Transaction",
+            "Are you sure you want to cancel this transaction?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            self.reset()
+            self.cancel_callback()
+
+    # -------------------------------------------------
     # Dispatcher
     # -------------------------------------------------
     def process(self):
@@ -128,10 +161,7 @@ class TransactionScreen(QWidget):
         with get_conn() as con:
             cur = con.cursor()
 
-            cur.execute(
-                "SELECT balance FROM accounts WHERE id=?",
-                (self.account_id,)
-            )
+            cur.execute("SELECT balance FROM accounts WHERE id=?", (self.account_id,))
             old_balance = cur.fetchone()[0]
 
             if amount > old_balance:
@@ -165,7 +195,6 @@ class TransactionScreen(QWidget):
             con.commit()
 
         log_event(self.account_id, "TRANSFER", amount, f"To {recipient}")
-
         self._finish("Transfer Funds", amount, old_balance, new_balance, recipient)
 
     # -------------------------------------------------
@@ -180,10 +209,7 @@ class TransactionScreen(QWidget):
         with get_conn() as con:
             cur = con.cursor()
 
-            cur.execute(
-                "SELECT balance FROM accounts WHERE id=?",
-                (self.account_id,)
-            )
+            cur.execute("SELECT balance FROM accounts WHERE id=?", (self.account_id,))
             old_balance = cur.fetchone()[0]
 
             if amount > old_balance:
@@ -203,7 +229,6 @@ class TransactionScreen(QWidget):
             con.commit()
 
         log_event(self.account_id, "BILL_PAYMENT", amount, bill_ref)
-
         self._finish("Bill Payment", amount, old_balance, new_balance, bill_ref)
 
     # -------------------------------------------------
@@ -213,10 +238,7 @@ class TransactionScreen(QWidget):
         with get_conn() as con:
             cur = con.cursor()
 
-            cur.execute(
-                "SELECT balance FROM accounts WHERE id=?",
-                (self.account_id,)
-            )
+            cur.execute("SELECT balance FROM accounts WHERE id=?", (self.account_id,))
             old_balance = cur.fetchone()[0]
 
             new_balance = old_balance + amount
@@ -232,7 +254,6 @@ class TransactionScreen(QWidget):
             con.commit()
 
         log_event(self.account_id, "CASH_DEPOSIT", amount)
-
         self._finish("Cash Deposit", amount, old_balance, new_balance)
 
     # -------------------------------------------------
