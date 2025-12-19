@@ -15,11 +15,14 @@ class TransactionScreen(QWidget):
         super().__init__()
         self.next_callback = next_callback
 
+        # ---------- Layout ----------
         self.layout = QVBoxLayout()
         self.layout.setAlignment(Qt.AlignCenter)
 
         self.title = QLabel("")
-        self.title.setStyleSheet("font-size:26px;font-weight:bold;color:#0d6efd;")
+        self.title.setStyleSheet(
+            "font-size:26px;font-weight:bold;color:#0d6efd;"
+        )
         self.layout.addWidget(self.title, alignment=Qt.AlignCenter)
 
         self.account_input = QLineEdit()
@@ -38,31 +41,46 @@ class TransactionScreen(QWidget):
 
         self.setLayout(self.layout)
 
+        # ---------- State ----------
         self.option = None
         self.account_id = None
         self.balance = None
 
     # -------------------------------------------------
+    # RESET (CRITICAL FOR KIOSK REUSE)
+    # -------------------------------------------------
+    def reset(self):
+        self.option = None
+        self.account_id = None
+        self.balance = None
+
+        self.title.setText("")
+        self.account_input.clear()
+        self.amount_input.clear()
+
+        self.account_input.show()
+        self.confirm_btn.setText("")
+
+    # -------------------------------------------------
     # Context from Menu
     # -------------------------------------------------
     def set_context(self, option, account_id, balance):
+        self.reset()
+
         self.option = option
         self.account_id = account_id
         self.balance = balance
 
-        self.account_input.clear()
-        self.amount_input.clear()
-
         if option == "transfer":
             self.title.setText("Transfer Funds")
-            self.account_input.show()
             self.account_input.setPlaceholderText("Recipient Card Number")
+            self.account_input.show()
             self.confirm_btn.setText("Confirm Transfer")
 
         elif option == "bill":
             self.title.setText("Pay Bills")
-            self.account_input.show()
             self.account_input.setPlaceholderText("Bill Reference / Account No.")
+            self.account_input.show()
             self.confirm_btn.setText("Pay Bill")
 
         elif option == "deposit":
@@ -71,7 +89,7 @@ class TransactionScreen(QWidget):
             self.confirm_btn.setText("Deposit Cash")
 
         else:
-            self.title.setText("Unsupported Operation")
+            QMessageBox.warning(self, "Error", "Invalid transaction option.")
 
     # -------------------------------------------------
     # Dispatcher
@@ -110,7 +128,10 @@ class TransactionScreen(QWidget):
         with get_conn() as con:
             cur = con.cursor()
 
-            cur.execute("SELECT balance FROM accounts WHERE id=?", (self.account_id,))
+            cur.execute(
+                "SELECT balance FROM accounts WHERE id=?",
+                (self.account_id,)
+            )
             old_balance = cur.fetchone()[0]
 
             if amount > old_balance:
@@ -145,13 +166,7 @@ class TransactionScreen(QWidget):
 
         log_event(self.account_id, "TRANSFER", amount, f"To {recipient}")
 
-        self._finish(
-            "Transfer Funds",
-            amount,
-            old_balance,
-            new_balance,
-            recipient
-        )
+        self._finish("Transfer Funds", amount, old_balance, new_balance, recipient)
 
     # -------------------------------------------------
     # Bill Payment
@@ -165,7 +180,10 @@ class TransactionScreen(QWidget):
         with get_conn() as con:
             cur = con.cursor()
 
-            cur.execute("SELECT balance FROM accounts WHERE id=?", (self.account_id,))
+            cur.execute(
+                "SELECT balance FROM accounts WHERE id=?",
+                (self.account_id,)
+            )
             old_balance = cur.fetchone()[0]
 
             if amount > old_balance:
@@ -186,13 +204,7 @@ class TransactionScreen(QWidget):
 
         log_event(self.account_id, "BILL_PAYMENT", amount, bill_ref)
 
-        self._finish(
-            "Bill Payment",
-            amount,
-            old_balance,
-            new_balance,
-            bill_ref
-        )
+        self._finish("Bill Payment", amount, old_balance, new_balance, bill_ref)
 
     # -------------------------------------------------
     # Cash Deposit
@@ -201,7 +213,10 @@ class TransactionScreen(QWidget):
         with get_conn() as con:
             cur = con.cursor()
 
-            cur.execute("SELECT balance FROM accounts WHERE id=?", (self.account_id,))
+            cur.execute(
+                "SELECT balance FROM accounts WHERE id=?",
+                (self.account_id,)
+            )
             old_balance = cur.fetchone()[0]
 
             new_balance = old_balance + amount
@@ -218,12 +233,7 @@ class TransactionScreen(QWidget):
 
         log_event(self.account_id, "CASH_DEPOSIT", amount)
 
-        self._finish(
-            "Cash Deposit",
-            amount,
-            old_balance,
-            new_balance
-        )
+        self._finish("Cash Deposit", amount, old_balance, new_balance)
 
     # -------------------------------------------------
     # Finish → Receipt

@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QPushButton,
     QTableWidget, QTableWidgetItem, QMessageBox
 )
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QTimer
 from database.db import get_conn
 import sqlite3
 
@@ -14,7 +14,7 @@ class TransactionHistoryScreen(QWidget):
         self.back_callback = back_callback
         self.account_id = None
 
-        layout = QVBoxLayout()
+        layout = QVBoxLayout(self)
 
         title = QLabel("Transaction History")
         title.setAlignment(Qt.AlignCenter)
@@ -26,6 +26,7 @@ class TransactionHistoryScreen(QWidget):
             "Transaction Type", "Amount", "Record ID"
         ])
         self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         layout.addWidget(self.table)
 
         back_btn = QPushButton("Back to Menu")
@@ -33,7 +34,12 @@ class TransactionHistoryScreen(QWidget):
         back_btn.clicked.connect(self.back_callback)
         layout.addWidget(back_btn, alignment=Qt.AlignCenter)
 
-        self.setLayout(layout)
+    # ------------------------------------
+    # Reset screen (REQUIRED)
+    # ------------------------------------
+    def reset(self):
+        self.account_id = None
+        self.table.setRowCount(0)
 
     # ------------------------------------
     # Load account transactions safely
@@ -43,12 +49,11 @@ class TransactionHistoryScreen(QWidget):
             QMessageBox.warning(self, "Error", "No active session.")
             return
 
+        self.reset()
         self.account_id = account_id
-        self.load_data()
+        QTimer.singleShot(0, self.load_data)
 
     def load_data(self):
-        self.table.setRowCount(0)
-
         try:
             with get_conn() as con:
                 cur = con.cursor()
@@ -64,8 +69,9 @@ class TransactionHistoryScreen(QWidget):
             for row in rows:
                 r = self.table.rowCount()
                 self.table.insertRow(r)
-                for c, val in enumerate(row):
-                    self.table.setItem(r, c, QTableWidgetItem(str(val)))
+                self.table.setItem(r, 0, QTableWidgetItem(str(row[0])))
+                self.table.setItem(r, 1, QTableWidgetItem(f"{float(row[1]):.2f}"))
+                self.table.setItem(r, 2, QTableWidgetItem(str(row[2])))
 
         except sqlite3.Error as e:
             QMessageBox.critical(
