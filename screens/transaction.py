@@ -15,54 +15,70 @@ class TransactionScreen(QWidget):
         super().__init__()
         self.next_callback = next_callback
 
-        layout = QVBoxLayout()
-        layout.setAlignment(Qt.AlignCenter)
+        self.layout = QVBoxLayout()
+        self.layout.setAlignment(Qt.AlignCenter)
 
-        label = QLabel("Transfer / Payment Details")
-        label.setStyleSheet("font-size:26px;font-weight:bold;color:#0d6efd;")
-        layout.addWidget(label, alignment=Qt.AlignCenter)
+        self.title = QLabel("")
+        self.title.setStyleSheet("font-size:26px;font-weight:bold;color:#0d6efd;")
+        self.layout.addWidget(self.title, alignment=Qt.AlignCenter)
 
         self.account_input = QLineEdit()
-        self.account_input.setPlaceholderText("Recipient Card Number")
         self.account_input.setFixedWidth(300)
-        layout.addWidget(self.account_input, alignment=Qt.AlignCenter)
+        self.layout.addWidget(self.account_input, alignment=Qt.AlignCenter)
 
         self.amount_input = QLineEdit()
         self.amount_input.setPlaceholderText("Amount (₱)")
         self.amount_input.setFixedWidth(300)
-        layout.addWidget(self.amount_input, alignment=Qt.AlignCenter)
+        self.layout.addWidget(self.amount_input, alignment=Qt.AlignCenter)
 
-        confirm_btn = QPushButton("Confirm Transaction")
-        confirm_btn.setFixedSize(260, 60)
-        confirm_btn.clicked.connect(self.process)
-        layout.addWidget(confirm_btn, alignment=Qt.AlignCenter)
+        self.confirm_btn = QPushButton("")
+        self.confirm_btn.setFixedSize(260, 60)
+        self.confirm_btn.clicked.connect(self.process)
+        self.layout.addWidget(self.confirm_btn, alignment=Qt.AlignCenter)
 
-        self.setLayout(layout)
+        self.setLayout(self.layout)
 
-        # context
         self.option = None
         self.account_id = None
         self.balance = None
 
+    # -------------------------------------------------
+    # Context from Menu
+    # -------------------------------------------------
     def set_context(self, option, account_id, balance):
         self.option = option
         self.account_id = account_id
         self.balance = balance
 
+        self.account_input.clear()
+        self.amount_input.clear()
+
+        if option == "transfer":
+            self.title.setText("Transfer Funds")
+            self.account_input.show()
+            self.account_input.setPlaceholderText("Recipient Card Number")
+            self.confirm_btn.setText("Confirm Transfer")
+
+        elif option == "bill":
+            self.title.setText("Pay Bills")
+            self.account_input.show()
+            self.account_input.setPlaceholderText("Bill Reference / Account No.")
+            self.confirm_btn.setText("Pay Bill")
+
+        elif option == "deposit":
+            self.title.setText("Cash Deposit")
+            self.account_input.hide()
+            self.confirm_btn.setText("Deposit Cash")
+
+        else:
+            self.title.setText("Unsupported Operation")
+
     # -------------------------------------------------
-    # Process Transfer
+    # Dispatcher
     # -------------------------------------------------
     def process(self):
-        acc = self.account_input.text().strip()
-        amt_str = self.amount_input.text().strip()
-
-        if not acc or not amt_str:
-            QMessageBox.warning(self, "Error", "Please fill in all fields.")
-            return
-
-        # Validate amount
         try:
-            amount = float(amt_str)
+            amount = float(self.amount_input.text().strip())
             if amount <= 0:
                 raise ValueError
         except ValueError:
@@ -70,98 +86,159 @@ class TransactionScreen(QWidget):
             return
 
         try:
-            with get_conn() as con:
-                cur = con.cursor()
-
-                # Get sender balance
-                cur.execute(
-                    "SELECT balance FROM accounts WHERE id = ?",
-                    (self.account_id,)
-                )
-                row = cur.fetchone()
-                if not row:
-                    QMessageBox.warning(self, "Error", "Account not found.")
-                    return
-
-                old_balance = row[0]
-
-                if amount > old_balance:
-                    log_event(
-                        self.account_id,
-                        "TRANSFER_FAIL",
-                        amount,
-                        "Insufficient balance"
-                    )
-                    QMessageBox.warning(self, "Error", "Insufficient balance.")
-                    return
-
-                # Get recipient
-                cur.execute(
-                    "SELECT id, balance FROM accounts WHERE card_number = ?",
-                    (acc,)
-                )
-                rec = cur.fetchone()
-                if not rec:
-                    log_event(
-                        self.account_id,
-                        "TRANSFER_FAIL",
-                        amount,
-                        "Recipient not found"
-                    )
-                    QMessageBox.warning(self, "Error", "Recipient account does not exist.")
-                    return
-
-                rec_id, rec_balance = rec
-
-                # Perform atomic transfer
-                new_balance = old_balance - amount
-                new_rec_balance = rec_balance + amount
-
-                cur.execute(
-                    "UPDATE accounts SET balance = ? WHERE id = ?",
-                    (new_balance, self.account_id)
-                )
-                cur.execute(
-                    "UPDATE accounts SET balance = ? WHERE id = ?",
-                    (new_rec_balance, rec_id)
-                )
-
-                # Transaction record
-                cur.execute("""
-                    INSERT INTO transactions (account_id, amount, type)
-                    VALUES (?, ?, ?)
-                """, (self.account_id, amount, "TRANSFER"))
-
-                con.commit()
-
-            # Audit logs (after commit)
-            log_event(
-                self.account_id,
-                "TRANSFER",
-                amount,
-                f"To card {acc} | Balance {old_balance} → {new_balance}"
-            )
-            log_event(
-                rec_id,
-                "TRANSFER_IN",
-                amount,
-                f"From account {self.account_id}"
-            )
-
-            # Prepare receipt
-            receipt = {
-                "type": "Transfer Funds",
-                "recipient": acc,
-                "amount": amount,
-                "old_balance": old_balance,
-                "new_balance": new_balance,
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }
-
-            QMessageBox.information(self, "Success", "Transfer completed.")
-            self.next_callback(receipt)
-
+            if self.option == "transfer":
+                self._process_transfer(amount)
+            elif self.option == "bill":
+                self._process_bill(amount)
+            elif self.option == "deposit":
+                self._process_deposit(amount)
+            else:
+                QMessageBox.warning(self, "Error", "Unsupported transaction.")
         except Exception:
-            print("\n[ERROR IN TransactionScreen.process]\n")
             traceback.print_exc()
-            QMessageBox.critical(self, "Error", "Transaction failed unexpectedly.")
+            QMessageBox.critical(self, "Error", "Transaction failed.")
+
+    # -------------------------------------------------
+    # Transfer
+    # -------------------------------------------------
+    def _process_transfer(self, amount):
+        recipient = self.account_input.text().strip()
+        if not recipient:
+            QMessageBox.warning(self, "Error", "Recipient is required.")
+            return
+
+        with get_conn() as con:
+            cur = con.cursor()
+
+            cur.execute("SELECT balance FROM accounts WHERE id=?", (self.account_id,))
+            old_balance = cur.fetchone()[0]
+
+            if amount > old_balance:
+                QMessageBox.warning(self, "Error", "Insufficient balance.")
+                return
+
+            cur.execute(
+                "SELECT id, balance FROM accounts WHERE card_number=?",
+                (recipient,)
+            )
+            rec = cur.fetchone()
+            if not rec:
+                QMessageBox.warning(self, "Error", "Recipient not found.")
+                return
+
+            rec_id, rec_balance = rec
+            new_balance = old_balance - amount
+
+            cur.execute(
+                "UPDATE accounts SET balance=? WHERE id=?",
+                (new_balance, self.account_id)
+            )
+            cur.execute(
+                "UPDATE accounts SET balance=? WHERE id=?",
+                (rec_balance + amount, rec_id)
+            )
+            cur.execute(
+                "INSERT INTO transactions(account_id, amount, type) VALUES(?,?,?)",
+                (self.account_id, amount, "TRANSFER")
+            )
+            con.commit()
+
+        log_event(self.account_id, "TRANSFER", amount, f"To {recipient}")
+
+        self._finish(
+            "Transfer Funds",
+            amount,
+            old_balance,
+            new_balance,
+            recipient
+        )
+
+    # -------------------------------------------------
+    # Bill Payment
+    # -------------------------------------------------
+    def _process_bill(self, amount):
+        bill_ref = self.account_input.text().strip()
+        if not bill_ref:
+            QMessageBox.warning(self, "Error", "Bill reference required.")
+            return
+
+        with get_conn() as con:
+            cur = con.cursor()
+
+            cur.execute("SELECT balance FROM accounts WHERE id=?", (self.account_id,))
+            old_balance = cur.fetchone()[0]
+
+            if amount > old_balance:
+                QMessageBox.warning(self, "Error", "Insufficient balance.")
+                return
+
+            new_balance = old_balance - amount
+
+            cur.execute(
+                "UPDATE accounts SET balance=? WHERE id=?",
+                (new_balance, self.account_id)
+            )
+            cur.execute(
+                "INSERT INTO transactions(account_id, amount, type) VALUES(?,?,?)",
+                (self.account_id, amount, "BILL_PAYMENT")
+            )
+            con.commit()
+
+        log_event(self.account_id, "BILL_PAYMENT", amount, bill_ref)
+
+        self._finish(
+            "Bill Payment",
+            amount,
+            old_balance,
+            new_balance,
+            bill_ref
+        )
+
+    # -------------------------------------------------
+    # Cash Deposit
+    # -------------------------------------------------
+    def _process_deposit(self, amount):
+        with get_conn() as con:
+            cur = con.cursor()
+
+            cur.execute("SELECT balance FROM accounts WHERE id=?", (self.account_id,))
+            old_balance = cur.fetchone()[0]
+
+            new_balance = old_balance + amount
+
+            cur.execute(
+                "UPDATE accounts SET balance=? WHERE id=?",
+                (new_balance, self.account_id)
+            )
+            cur.execute(
+                "INSERT INTO transactions(account_id, amount, type) VALUES(?,?,?)",
+                (self.account_id, amount, "CASH_DEPOSIT")
+            )
+            con.commit()
+
+        log_event(self.account_id, "CASH_DEPOSIT", amount)
+
+        self._finish(
+            "Cash Deposit",
+            amount,
+            old_balance,
+            new_balance
+        )
+
+    # -------------------------------------------------
+    # Finish → Receipt
+    # -------------------------------------------------
+    def _finish(self, tx_type, amount, old, new, recipient=None):
+        receipt = {
+            "type": tx_type,
+            "amount": amount,
+            "old_balance": old,
+            "new_balance": new,
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+
+        if recipient:
+            receipt["recipient"] = recipient
+
+        QMessageBox.information(self, "Success", f"{tx_type} completed.")
+        self.next_callback(receipt)

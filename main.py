@@ -10,15 +10,18 @@ from PyQt5.QtWidgets import QGraphicsOpacityEffect
 import sys
 import traceback
 
+# Screens
 from screens.welcome import WelcomeScreen
 from screens.auth import AuthScreen
 from screens.menu import MenuScreen
 from screens.transaction import TransactionScreen
 from screens.receipt import ReceiptScreen
 from screens.admin import AdminScreen
+from screens.account_info import AccountInfoScreen
+from screens.history import TransactionHistoryScreen
 
 from database.db import log_event
-from security import verify_pin   # ✅ correct API
+from security import verify_pin
 
 
 # ============================================================
@@ -61,7 +64,7 @@ class AnimatedStack(QStackedWidget):
         group.addAnimation(a_in)
         group.start()
 
-    def slide_to(self, index, direction="left"):
+    def slide_to(self, index):
         if self.width() == 0 or self.height() == 0:
             self.setCurrentIndex(index)
             return
@@ -70,9 +73,7 @@ class AnimatedStack(QStackedWidget):
         nxt = self.widget(index)
 
         w, h = self.width(), self.height()
-        start_x = w if direction == "left" else -w
-
-        nxt.setGeometry(start_x, 0, w, h)
+        nxt.setGeometry(w, 0, w, h)
         self.setCurrentIndex(index)
 
         a_cur = QPropertyAnimation(current, b"geometry")
@@ -82,8 +83,8 @@ class AnimatedStack(QStackedWidget):
             a.setDuration(self.animation_duration)
 
         a_cur.setStartValue(QRect(0, 0, w, h))
-        a_cur.setEndValue(QRect(-start_x, 0, w, h))
-        a_nxt.setStartValue(QRect(start_x, 0, w, h))
+        a_cur.setEndValue(QRect(-w, 0, w, h))
+        a_nxt.setStartValue(QRect(w, 0, w, h))
         a_nxt.setEndValue(QRect(0, 0, w, h))
 
         group = QParallelAnimationGroup(self)
@@ -123,18 +124,14 @@ class IdleWarningDialog(QDialog):
 
 
 # ============================================================
-#  Admin PIN Dialog (PBKDF2 – FINAL)
+#  Admin PIN Dialog
 # ============================================================
 class AdminPinDialog(QDialog):
-    """
-    Admin PIN = 4321
-    Hash generated ONCE using:
-        from security import hash_pin
-        print(hash_pin("4321").hex())
-    """
-
-    # 🔐 PASTE YOUR GENERATED HEX STRING HERE
-    ADMIN_PIN_HASH = "3ef6cbe5bbca5bbf8dacd20cc09f00187a419909845783e512671c6627b31c828a92e565359a9fe4e416c5e2f1faa46a"
+    ADMIN_PIN_HASH = (
+        "3ef6cbe5bbca5bbf8dacd20cc09f0018"
+        "7a419909845783e512671c6627b31c82"
+        "8a92e565359a9fe4e416c5e2f1faa46a"
+    )
 
     def __init__(self):
         super().__init__()
@@ -147,7 +144,6 @@ class AdminPinDialog(QDialog):
 
         self.input = QLineEdit()
         self.input.setEchoMode(QLineEdit.Password)
-        self.input.setMaxLength(12)
         self.input.setAlignment(Qt.AlignCenter)
         self.input.setStyleSheet("font-size:22px;")
 
@@ -160,15 +156,14 @@ class AdminPinDialog(QDialog):
         layout.addWidget(btn)
 
     def check(self):
-        pin = self.input.text().strip()
-        if verify_pin(pin, self.ADMIN_PIN_HASH):
+        if verify_pin(self.input.text(), self.ADMIN_PIN_HASH):
             self.accept()
         else:
             self.input.clear()
 
 
 # ============================================================
-#  Main Window (Kiosk Mode)
+#  Main Window (Kiosk Controller)
 # ============================================================
 class MainWindow(QWidget):
     IDLE_SECONDS = 60
@@ -189,22 +184,22 @@ class MainWindow(QWidget):
         self.auth = AuthScreen(self.go_menu, self.go_welcome)
         self.menu = MenuScreen(self.go_transaction, self.go_welcome)
         self.transaction = TransactionScreen(self.go_receipt)
-        self.receipt = ReceiptScreen(self.go_welcome)
+        self.receipt = ReceiptScreen(self.go_home)
+        self.account_info = AccountInfoScreen(self.go_home)
+        self.history = TransactionHistoryScreen(self.go_home)
         self.admin = AdminScreen(self.go_welcome)
 
         for s in (
             self.welcome, self.auth, self.menu,
-            self.transaction, self.receipt, self.admin
+            self.transaction, self.receipt,
+            self.account_info, self.history,
+            self.admin
         ):
             self.stack.addWidget(s)
 
         self.stack.setCurrentWidget(self.welcome)
 
-        # Audit boot
-        try:
-            log_event(None, "SYSTEM_BOOT", details="Kiosk started")
-        except Exception:
-            traceback.print_exc()
+        log_event(None, "SYSTEM_BOOT", details="Kiosk started")
 
         # Idle timer
         self.idle_timer = QTimer(self)
@@ -214,10 +209,17 @@ class MainWindow(QWidget):
 
         QApplication.instance().installEventFilter(self)
 
+    # ---------- Session Home ----------
+    def go_home(self):
+        if self.menu.account_id is not None:
+            self.stack.fade_to(self.stack.indexOf(self.menu))
+        else:
+            self.stack.fade_to(self.stack.indexOf(self.welcome))
+
     # ---------- Idle Handling ----------
     def eventFilter(self, obj, event):
         if event.type() in (
-            QEvent.MouseMove, QEvent.MouseButtonPress, QEvent.MouseButtonRelease,
+            QEvent.MouseMove, QEvent.MouseButtonPress,
             QEvent.KeyPress, QEvent.KeyRelease
         ):
             self.idle_timer.start()
@@ -225,22 +227,16 @@ class MainWindow(QWidget):
 
     def _idle_trigger(self):
         dlg = IdleWarningDialog(seconds=10)
-        countdown = QTimer(self)
-        countdown.setInterval(1000)
-
-        def tick():
-            dlg.tick()
-            if dlg.seconds <= 0:
-                countdown.stop()
-                dlg.reject()
-                self.go_welcome()
-
-        countdown.timeout.connect(tick)
-        countdown.start()
+        timer = QTimer(self)
+        timer.timeout.connect(dlg.tick)
+        timer.start(1000)
 
         if dlg.exec_() == QDialog.Accepted:
-            countdown.stop()
+            timer.stop()
             self.idle_timer.start()
+        else:
+            timer.stop()
+            self.go_welcome()
 
     # ---------- Admin Shortcut ----------
     def keyPressEvent(self, event):
@@ -249,9 +245,8 @@ class MainWindow(QWidget):
             event.modifiers() & Qt.ControlModifier and
             event.modifiers() & Qt.ShiftModifier
         ):
-            dlg = AdminPinDialog()
-            if dlg.exec_() == QDialog.Accepted:
-                log_event(None, "ADMIN_UNLOCK", details="Admin panel opened")
+            if AdminPinDialog().exec_() == QDialog.Accepted:
+                log_event(None, "ADMIN_UNLOCK")
                 self.go_admin()
             return
 
@@ -263,6 +258,8 @@ class MainWindow(QWidget):
 
     # ---------- Navigation ----------
     def go_welcome(self):
+        self.menu.account_id = None
+        self.menu.balance = None
         self.stack.fade_to(self.stack.indexOf(self.welcome))
 
     def go_auth(self):
@@ -276,6 +273,16 @@ class MainWindow(QWidget):
         self.stack.slide_to(self.stack.indexOf(self.menu))
 
     def go_transaction(self, option, account_id, balance):
+        if option == "info":
+            self.account_info.set_account(account_id)
+            self.stack.fade_to(self.stack.indexOf(self.account_info))
+            return
+
+        if option == "statement":
+            self.history.set_account(account_id)
+            self.stack.fade_to(self.stack.indexOf(self.history))
+            return
+
         self.transaction.set_context(option, account_id, balance)
         self.stack.slide_to(self.stack.indexOf(self.transaction))
 
@@ -291,5 +298,5 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()
-    QTimer.singleShot(120, window.showFullScreen)
+    QTimer.singleShot(100, window.showFullScreen)
     sys.exit(app.exec_())
