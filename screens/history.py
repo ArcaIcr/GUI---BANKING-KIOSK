@@ -2,16 +2,11 @@
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QPushButton,
     QTableWidget, QTableWidgetItem,
-    QMessageBox, QSizePolicy, QApplication
+    QMessageBox
 )
 from PyQt5.QtCore import Qt, QTimer
 from database.db import get_conn
 import sqlite3
-
-
-def scale(px: int) -> int:
-    screen_h = QApplication.primaryScreen().size().height()
-    return int(px * screen_h / 800)
 
 
 class TransactionHistoryScreen(QWidget):
@@ -22,22 +17,21 @@ class TransactionHistoryScreen(QWidget):
 
         # ---------- Layout ----------
         self.root = QVBoxLayout(self)
+        self.root.setAlignment(Qt.AlignCenter)
         self.root.setContentsMargins(30, 25, 30, 25)
-        self.root.setSpacing(scale(14))
+        self.root.setSpacing(14)
 
         self.root.addStretch(1)
 
         # ---------- Title ----------
-        title = QLabel("Transaction History")
-        title.setAlignment(Qt.AlignCenter)
-        title.setStyleSheet(
-            f"""
-            font-size:{scale(28)}px;
+        self.title = QLabel("Transaction History")
+        self.title.setAlignment(Qt.AlignCenter)
+        self.title.setStyleSheet("""
+            font-size:28px;
             font-weight:bold;
             color:#0d6efd;
-            """
-        )
-        self.root.addWidget(title)
+        """)
+        self.root.addWidget(self.title)
 
         # ---------- Table ----------
         self.table = QTableWidget(0, 3)
@@ -50,54 +44,49 @@ class TransactionHistoryScreen(QWidget):
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.verticalHeader().setVisible(False)
 
-        self.table.setStyleSheet(
-            f"""
-            QTableWidget {{
-                font-size:{scale(14)}px;
-            }}
-            QHeaderView::section {{
-                font-size:{scale(15)}px;
+        self.table.setStyleSheet("""
+            QTableWidget {
+                font-size:14px;
+            }
+            QHeaderView::section {
+                font-size:15px;
                 font-weight:bold;
                 padding:6px;
-            }}
-            """
-        )
+            }
+        """)
 
         self.root.addWidget(self.table, stretch=4)
 
         # ---------- Back Button ----------
-        back_btn = QPushButton("Back to Menu")
-        back_btn.setMinimumHeight(scale(55))
-        back_btn.setSizePolicy(
-            QSizePolicy.Expanding,
-            QSizePolicy.Fixed
-        )
-        back_btn.setStyleSheet(
-            f"""
-            QPushButton {{
-                font-size:{scale(18)}px;
+        self.back_btn = QPushButton("Back to Menu")
+        self.back_btn.setFixedHeight(56)
+        self.back_btn.setMaximumWidth(420)
+        self.back_btn.setStyleSheet("""
+            QPushButton {
+                font-size:18px;
                 font-weight:bold;
                 padding:12px;
-                border-radius:{scale(18)}px;
-            }}
-            """
-        )
-        back_btn.clicked.connect(self.back_callback)
-        self.root.addWidget(back_btn)
+                border-radius:16px;
+            }
+        """)
+        self.back_btn.clicked.connect(self.back_callback)
+        self.root.addWidget(self.back_btn, alignment=Qt.AlignCenter)
 
         self.root.addStretch(1)
 
         self.reset()
 
     # ------------------------------------
-    # Reset screen (CRITICAL)
+    # RESET (ABSOLUTELY REQUIRED)
     # ------------------------------------
     def reset(self):
+        self.setGraphicsEffect(None)  # 🔥 critical
+
         self.account_id = None
         self.table.setRowCount(0)
         self.table.clearContents()
 
-        self.updateGeometry()
+        self.update()
         self.repaint()
 
     # ------------------------------------
@@ -130,13 +119,12 @@ class TransactionHistoryScreen(QWidget):
             for row in rows:
                 r = self.table.rowCount()
                 self.table.insertRow(r)
-
                 self.table.setItem(r, 0, QTableWidgetItem(str(row[0])))
                 self.table.setItem(r, 1, QTableWidgetItem(f"{float(row[1]):,.2f}"))
                 self.table.setItem(r, 2, QTableWidgetItem(str(row[2])))
 
             self.table.resizeColumnsToContents()
-            self.updateGeometry()
+            self.update()
             self.repaint()
 
         except sqlite3.Error as e:

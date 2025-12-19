@@ -17,7 +17,7 @@ class TransactionScreen(QWidget):
         self.cancel_callback = cancel_callback
 
         # ---------- Layout ----------
-        self.layout = QVBoxLayout()
+        self.layout = QVBoxLayout(self)
         self.layout.setAlignment(Qt.AlignCenter)
 
         self.title = QLabel("")
@@ -43,21 +43,8 @@ class TransactionScreen(QWidget):
 
         self.cancel_btn = QPushButton("Cancel")
         self.cancel_btn.setFixedSize(260, 50)
-        self.cancel_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #dee2e6;
-                color: #333;
-                border-radius: 14px;
-                font-size: 18px;
-            }
-            QPushButton:hover {
-                background-color: #ced4da;
-            }
-        """)
         self.cancel_btn.clicked.connect(self.cancel)
         self.layout.addWidget(self.cancel_btn, alignment=Qt.AlignCenter)
-
-        self.setLayout(self.layout)
 
         # ---------- State ----------
         self.option = None
@@ -65,19 +52,23 @@ class TransactionScreen(QWidget):
         self.balance = None
 
     # -------------------------------------------------
-    # RESET (CRITICAL FOR KIOSK REUSE)
+    # RESET (ABSOLUTELY REQUIRED FOR KIOSK REUSE)
     # -------------------------------------------------
     def reset(self):
+        # state
         self.option = None
         self.account_id = None
         self.balance = None
 
+        # UI reset
+        self.setGraphicsEffect(None)     # 🔥 critical
         self.title.setText("")
         self.account_input.clear()
         self.amount_input.clear()
 
-        self.account_input.show()
+        self.account_input.show()        # 🔥 undo previous hide()
         self.confirm_btn.setText("")
+        self.confirm_btn.setEnabled(True)
 
     # -------------------------------------------------
     # Context from Menu
@@ -160,7 +151,6 @@ class TransactionScreen(QWidget):
 
         with get_conn() as con:
             cur = con.cursor()
-
             cur.execute("SELECT balance FROM accounts WHERE id=?", (self.account_id,))
             old_balance = cur.fetchone()[0]
 
@@ -208,7 +198,6 @@ class TransactionScreen(QWidget):
 
         with get_conn() as con:
             cur = con.cursor()
-
             cur.execute("SELECT balance FROM accounts WHERE id=?", (self.account_id,))
             old_balance = cur.fetchone()[0]
 
@@ -237,7 +226,6 @@ class TransactionScreen(QWidget):
     def _process_deposit(self, amount):
         with get_conn() as con:
             cur = con.cursor()
-
             cur.execute("SELECT balance FROM accounts WHERE id=?", (self.account_id,))
             old_balance = cur.fetchone()[0]
 
