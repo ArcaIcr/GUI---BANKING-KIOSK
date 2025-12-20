@@ -90,7 +90,7 @@ class AdminPinDialog(QDialog):
 
 
 # ============================================================
-#  Main Window (ATM-SAFE)
+#  Main Window (ATM / KIOSK SAFE)
 # ============================================================
 class MainWindow(QWidget):
     IDLE_SECONDS = 60
@@ -101,12 +101,13 @@ class MainWindow(QWidget):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
         self.setStyleSheet("background-color:#f8f9fa;")
 
+        # ---------- STACK ----------
         self.stack = QStackedWidget()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.stack)
 
-        # Screens
+        # ---------- Screens ----------
         self.welcome = WelcomeScreen(self.go_auth)
         self.auth = AuthScreen(self.go_menu, self.go_welcome)
         self.menu = MenuScreen(self.go_transaction, self.go_welcome)
@@ -121,22 +122,27 @@ class MainWindow(QWidget):
         self.history = TransactionHistoryScreen(self.go_home)
         self.admin = AdminScreen(self.go_welcome)
 
-        for s in (
-            self.welcome, self.auth, self.menu,
-            self.transaction, self.receipt,
-            self.account_info, self.history,
+        for screen in (
+            self.welcome,
+            self.auth,
+            self.menu,
+            self.transaction,
+            self.receipt,
+            self.account_info,
+            self.history,
             self.admin
         ):
-            self.stack.addWidget(s)
+            self.stack.addWidget(screen)
 
         self.stack.setCurrentWidget(self.welcome)
 
+        # ---------- Audit ----------
         try:
             log_event(None, "SYSTEM_BOOT", details="Kiosk started")
         except Exception:
             traceback.print_exc()
 
-        # Idle timer
+        # ---------- Idle Timer ----------
         self.idle_timer = QTimer(self)
         self.idle_timer.setInterval(self.IDLE_SECONDS * 1000)
         self.idle_timer.timeout.connect(self._idle_trigger)
@@ -144,18 +150,37 @@ class MainWindow(QWidget):
 
         QApplication.instance().installEventFilter(self)
 
-    # ---------- Navigation ----------
-    def go_home(self):
-        self.transaction.reset()
-        self.stack.setCurrentWidget(self.menu)
-
-    def go_welcome(self):
+    # ========================================================
+    #  HARD SESSION RESET (MOST IMPORTANT FIX)
+    # ========================================================
+    def reset_session(self):
+        """
+        Fully resets the kiosk session.
+        This PREVENTS white screens.
+        """
         self.menu.account_id = None
         self.menu.balance = None
 
-        for s in (self.transaction, self.history, self.account_info):
-            s.reset()
+        for screen in (
+            self.transaction,
+            self.history,
+            self.account_info,
+            self.receipt
+        ):
+            try:
+                screen.reset()
+            except Exception:
+                pass
 
+    # ========================================================
+    #  Navigation
+    # ========================================================
+    def go_home(self):
+        self.reset_session()
+        self.stack.setCurrentWidget(self.welcome)
+
+    def go_welcome(self):
+        self.reset_session()
         self.stack.setCurrentWidget(self.welcome)
 
     def go_auth(self):
@@ -187,11 +212,18 @@ class MainWindow(QWidget):
         self.receipt.set_receipt(receipt_data)
         self.stack.setCurrentWidget(self.receipt)
 
-    # ---------- Idle ----------
+    def go_admin(self):
+        self.stack.setCurrentWidget(self.admin)
+
+    # ========================================================
+    #  Idle Handling
+    # ========================================================
     def eventFilter(self, obj, event):
         if event.type() in (
-            QEvent.MouseMove, QEvent.MouseButtonPress,
-            QEvent.KeyPress, QEvent.KeyRelease
+            QEvent.MouseMove,
+            QEvent.MouseButtonPress,
+            QEvent.KeyPress,
+            QEvent.KeyRelease
         ):
             self.idle_timer.start()
         return super().eventFilter(obj, event)
@@ -199,15 +231,44 @@ class MainWindow(QWidget):
     def _idle_trigger(self):
         dlg = IdleWarningDialog(10)
         timer = QTimer(self)
-        timer.timeout.connect(dlg.tick)
+
+        def tick():
+            dlg.tick()
+            if dlg.seconds <= 0:
+                timer.stop()
+                dlg.reject()
+                self.reset_session()
+                self.stack.setCurrentWidget(self.welcome)
+
+        timer.timeout.connect(tick)
         timer.start(1000)
 
         if dlg.exec_():
             timer.stop()
             self.idle_timer.start()
-        else:
-            timer.stop()
-            self.go_welcome()
+
+    # ========================================================
+    #  Admin Shortcut
+    # ========================================================
+    def keyPressEvent(self, event):
+        if (
+            event.key() == Qt.Key_A and
+            event.modifiers() & Qt.ControlModifier and
+            event.modifiers() & Qt.ShiftModifier
+        ):
+            if AdminPinDialog().exec_():
+                try:
+                    log_event(None, "ADMIN_UNLOCK")
+                except Exception:
+                    traceback.print_exc()
+                self.go_admin()
+            return
+
+        if event.key() == Qt.Key_Escape:
+            event.ignore()
+            return
+
+        super().keyPressEvent(event)
 
 
 # ============================================================
